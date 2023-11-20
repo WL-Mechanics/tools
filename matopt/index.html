@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>MaterialOptimizer v0.0.1</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; }
+    .container { max-width: 1280px; margin: 0 auto; }
+    .hidden { opacity: 0; }
+    #textarea-json { height: 500px; width: 99%; }
+    #button-download {
+      background: #efefef;
+      border-style: solid;
+      border-width: 1px;
+      text-decoration: none;
+      padding: 5px;
+      margin-right: 5px;
+      cursor: default;
+    }
+    .enabled { color: #000; border-color: #000; }
+    .disabled { color: #1010104d; border-color: #7676764d; }
+    li { margin-top: 5px; }
+    @keyframes fadeOut {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .fade-out { opacity: 0; animation: fadeOut 1s; }
+    @keyframes highlight {
+      0% { background: #fffbdd; }
+      100% { background: initial; }
+    }
+    .highlight { background: initial; animation: highlight 1s; }
+    .mono { font-family: monospace; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>MaterialOptimizer v0.0.1</h1>
+    <p><em>Remove unused materials from a Wild Life scene</em></p>
+    <div>
+      <p><strong>Usage:</strong></p>
+      <ol>
+        <li>Drag the scene's .json file onto the text box below (or paste its content into it).</li>
+        <li>Click the "optimize" button.</li>
+        <li>Use the download button to download the resulting scene .json.</li>
+      </ol>
+    </div>
+    <div>
+      <textarea id="textarea-json" placeholder="drag scene.json here (or paste its content)..."></textarea>
+      <div>
+        <p style="float: left">
+          <button id="button-optimize" style="font-size: 1.1rem">✨ Optimize ✨</button>
+          <span class="hidden" id="result-indicator">✔️</span>
+        </p>
+        <p style="float: right">
+          <a href="#" id="button-download">Download result</a>
+        </p>
+      </div>
+    </div>
+  </div>
+  <script type="module" src="script.js"></script>
+  <script type="module">
+    import removeUnusedMaterials from "./script.js";
+
+    const jsonTextarea = document.getElementById("textarea-json");
+    const resultIndidator = document.getElementById("result-indicator");
+    const optimizeButton = document.getElementById("button-optimize");
+    const downloadButton = document.getElementById("button-download");
+
+    function generateFilename() {
+      const time = new Date();
+      const isoString = time.toISOString().replaceAll(":", "").slice(0, -5);
+      return "opt_" + isoString + ".json";
+    }
+
+    function tryParseJson(str) {
+      try {
+        return JSON.parse(str);
+      } catch {
+        return null;
+      }
+    }
+
+    function showStatus(status) {
+      resultIndidator.className = "hidden";
+      resultIndidator.textContent = status;
+      resultIndidator.offsetHeight;
+      resultIndidator.className = "fade-out";
+    }
+
+    function performHighlight() {
+      jsonTextarea.className = "";
+      jsonTextarea.offsetHeight;
+      jsonTextarea.className = "highlight";
+    }
+
+    function performOptimization(event) {
+      event.preventDefault();
+      resultIndidator.className = "hidden";
+      const json = jsonTextarea.value;
+      try {
+        const scene = JSON.parse(json);
+        const result = removeUnusedMaterials(scene);
+        jsonTextarea.value = JSON.stringify(result, null, "\t");
+        showStatus("✔️");
+        performHighlight();
+      } catch (e) {
+        console.error(e);
+        showStatus("❌");
+      }
+    }
+
+    function performDownload(event) {
+      const json = new Blob([jsonTextarea.value], { type: "application/json" });
+      downloadButton.download = generateFilename();
+      downloadButton.href = window.URL.createObjectURL(json);
+    }
+
+    optimizeButton.addEventListener("click", performOptimization);
+    downloadButton.addEventListener("click", performDownload);
+    jsonTextarea.addEventListener("dragover", (e) => e.preventDefault());
+    jsonTextarea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      try {
+        if (e.dataTransfer.items[0].kind !== "file") {
+          return;
+        }
+        const fileReader = new FileReader();
+        fileReader.readAsText(e.dataTransfer.files[0]);
+        fileReader.addEventListener("load", () => {
+          jsonTextarea.value = fileReader.result;
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  </script>
+</body>
+</html>
