@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>SwapCharacters v0.2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { font-family: sans-serif; }
+    .hidden { opacity: 0; }
+    .guid { display: none; }
+    .container { display: grid; grid-template-columns: auto auto; gap: 0 10px; padding: 10px; }
+    #textarea-json { height: 500px; width: 99%; }
+    #button-download {
+      background: #efefef;
+      border-style: solid;
+      border-width: 1px;
+      text-decoration: none;
+      padding: 5px;
+      margin-right: 5px;
+      cursor: default;
+    }
+    .enabled { color: #000; border-color: #000; }
+    .disabled { color: #1010104d; border-color: #7676764d; }
+    li { margin-top: 5px; }
+    @keyframes fadeOut {
+      0% { opacity: 1; }
+      100% { opacity: 0; }
+    }
+    .fade-out { opacity: 0; animation: fadeOut 1s; }
+    @keyframes highlight {
+      0% { background: #fffbdd; }
+      100% { background: initial; }
+    }
+    .highlight { background: initial; animation: highlight 1s; }
+    .mono { font-family: monospace; }
+  </style>
+</head>
+<body>
+  <h1>SwapCharacters v0.2</h1>
+  <p><em>Swap two characters in a Wild Life scene</em></p>
+  <div>
+    <p><strong>Usage:</strong></p>
+    <ol>
+      <li>Drag the scene's .json file onto the text box below (or paste its content into it).</li>
+      <li>Select the two characters you want to swap in the right panel.</li>
+      <li>Click the swap button to swap the characters.</li>
+      <li>Use the download button to download the resulting scene .JSON.</li>
+    </ol>
+    <p>(Repeat steps 2-3 if you want to perform multiple swaps.)</p>
+    <p>
+      ⚠️ <strong>Disclaimer:</strong> This tool edits the scene .JSON, which can result in bugs and maybe even crashes! It's not officially supported by the game, so please don't bug the WL devs (or anyone else) if it goes wrong. And remember to backup your original scene!
+    </p>
+  </div>
+  <div class="container">
+    <div>
+      <textarea id="textarea-json" placeholder="drag scene.json here (or paste its content)..."></textarea>
+      <p>
+        <a href="#" id="button-download" class="disabled">Download scene</a>
+      </p>
+    </div>
+    <div>
+      <div>
+        <strong>Select two characters to swap below</strong>
+      </div>
+      <p>
+        <button id="button-swap">Swap characters</button>
+        <span class="hidden" id="result-indicator">✔️</span>
+      </p>
+      <p>Detected characters:</p>
+      <ul id="character-list"></ul>
+    </div>
+  </div>
+  <p>
+    <strong>Changelog:</strong>
+    <ul>
+      <li>v0.2 (2023-09-02): Added support for dragging the scene.json file onto the text box.</li>
+      <li>v0.1 (2023-08-28): Initial version.</li>
+    </ul>
+  </p>
+  <p><strong>License:</strong> <a target="_blank" href="https://opensource.org/license/0bsd/">Zero-Clause BSD</a>. Use "View Source" if you want to obtain the source code. 😊</p>
+  <script type="module" src="script.js"></script>
+  <script type="module">
+    import { swapCharacters, getCharacterHierarchy } from "./script.js";
+
+    const jsonTextarea = document.getElementById("textarea-json");
+    const swapButton = document.getElementById("button-swap");
+    const downloadButton = document.getElementById("button-download");
+    const resultIndidator = document.getElementById("result-indicator");
+    const characterList = document.getElementById("character-list");
+
+    function generateFilename() {
+      const time = new Date();
+      const isoString = time.toISOString().replaceAll(":", "").slice(0, -5);
+      return "swapped_" + isoString + ".json";
+    }
+
+    function getSelectedGuids() {
+      const result = [];
+      const lbls = characterList.querySelectorAll("label");
+      for (const lbl of lbls) {
+        const chk = lbl.querySelector("input");
+        if (chk.checked) {
+          result.push(lbl.dataset.guid);
+        }
+      }
+      return result;
+    }
+
+    function updateSwapButton() {
+      const selectedGuids = getSelectedGuids();
+      swapButton.disabled = (selectedGuids.length !== 2);
+    }
+
+    function toListItem(handle) {
+      function toItem(handle) {
+        if (handle["category"] === "characters") {
+          const label = document.createElement("label");
+          const chk = document.createElement("input");
+          chk.type = "checkbox";
+          chk.addEventListener("change", updateSwapButton);
+          label.appendChild(chk);
+          label.appendChild(document.createTextNode(handle["label"]));
+          label.dataset.guid = handle["guid"];
+          return label;
+        } else {
+          return document.createTextNode(handle["label"]);
+        }
+      }
+
+      const li = document.createElement("li");
+      li.appendChild(toItem(handle));
+      if (handle["nodes"] && handle["nodes"].length > 0) {
+        const ul = document.createElement("ul");
+        for (const node of handle["nodes"]) {
+          ul.appendChild(toListItem(node));
+        }
+        li.appendChild(ul);
+      }
+      return li;
+    }
+
+    function tryParseJson(str) {
+      try {
+        return JSON.parse(str);
+      } catch {
+        return null;
+      }
+    }
+
+    function updateOutline(handles) {
+      characterList.innerHTML = "";
+      for (const handle of handles) {
+        characterList.appendChild(toListItem(handle));
+      }
+    }
+
+    function updateInputs() {
+      const json = tryParseJson(jsonTextarea.value);
+      const hasValidJson = (json !== null);
+      if (hasValidJson) {
+        const handles = getCharacterHierarchy(json);
+        updateOutline(handles);
+        downloadButton.className = "enabled";
+      } else {
+        updateOutline([]);
+        downloadButton.className = "disabled";
+      }
+      updateSwapButton();
+    }
+
+    function showStatus(status) {
+      resultIndidator.className = "hidden";
+      resultIndidator.textContent = status;
+      resultIndidator.offsetHeight;
+      resultIndidator.className = "fade-out";
+    }
+
+    function performHighlight() {
+      jsonTextarea.className = "";
+      jsonTextarea.offsetHeight;
+      jsonTextarea.className = "highlight";
+    }
+
+    function performSwap(event) {
+      event.preventDefault();
+      resultIndidator.className = "hidden";
+      const json = jsonTextarea.value;
+      const [guid1, guid2] = getSelectedGuids();
+      try {
+        const scene = JSON.parse(json);
+        const result = swapCharacters(scene, guid1, guid2);
+        jsonTextarea.value = JSON.stringify(result, null, "\t");
+        updateInputs();
+        showStatus("✔️");
+        performHighlight();
+      } catch (e) {
+        console.error(e);
+        showStatus("❌");
+      }
+    }
+
+    function performDownload(event) {
+      if (downloadButton.className === "disabled") {
+        event.preventDefault();
+        return;
+      }
+      const json = new Blob([jsonTextarea.value], { type: "application/json" });
+      downloadButton.download = generateFilename();
+      downloadButton.href = window.URL.createObjectURL(json);
+    }
+
+    updateInputs();
+
+    jsonTextarea.addEventListener("input", updateInputs);
+    swapButton.addEventListener("click", performSwap);
+    downloadButton.addEventListener("click", performDownload);
+
+    jsonTextarea.addEventListener("dragover", (e) => e.preventDefault());
+    jsonTextarea.addEventListener("drop", (e) => {
+      e.preventDefault();
+      try {
+        if (e.dataTransfer.items[0].kind !== "file") {
+          return;
+        }
+        const fileReader = new FileReader();
+        fileReader.readAsText(e.dataTransfer.files[0]);
+        fileReader.addEventListener("load", () => {
+          jsonTextarea.value = fileReader.result;
+          updateInputs();
+        });
+      } catch (e) {
+        console.error(e);
+      }
+    });
+  </script>
+</body>
+</html>
